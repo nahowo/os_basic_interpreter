@@ -1,0 +1,714 @@
+/* Basic Interpreter by H�seyin Uslu raistlinthewiz@hotmail.com */
+/* Code licenced under GPL */
+
+
+#include <stdio.h>
+#include <conio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+
+struct node{ // 함수 호출/복귀에 사용되는 구조체 정의
+	int type; // 스택에 저장된 요소의 타입
+/* system stack-> 1 for variable, 2 for function , 3 for function call
+4 for begin 5 for end */
+
+	char exp_data; // 표현식의 데이터
+	int val; // 값
+	int line; // 참조 라인
+	struct node * next; // 다음 노드를 가리키는 포인터
+
+};
+
+typedef struct node Node; // struct node에 Node 별칭 할당
+
+struct stack{ // node 구조체가 담길 스택 정의
+	Node * top; // 스택의 최상위 노드를 가리키는 포인터
+};
+
+typedef struct stack Stack; // struct stack에 Stack 별칭 할당
+
+struct opnode{ // 연산에 사용되는 구조체 정의
+	char op; // 사용할 연산자
+	struct opnode * next; // 다음 노드를 가리키는 포인터
+};
+typedef struct opnode opNode; // struct opnode에 opNode 별칭 할당
+
+struct opstack{ // 연산 구조체가 담길 스택 정의
+	opNode * top; // 스택의 최상위 노드를 가리키는 포인터
+};
+
+typedef struct opstack OpStack; // struct opstack에 OpStack 별칭 할당
+
+struct postfixnode{ // 후위 표기법에 사용되는 구조체 정의
+	int val; // 값
+	struct postfixnode * next; // 다음 노드를 가리키는 포인터
+};
+
+typedef struct postfixnode Postfixnode; // struct postfixnode에 Postfixnode 별칭 할당
+
+struct postfixstack{ // 후위 표기법이 담길 스택 정의
+	Postfixnode * top; // 스택의 최상위 노드를 가리키는 포인터
+	};
+
+typedef struct postfixstack PostfixStack; // struct postfixstack에 PostfixStack 별칭 할당
+
+
+
+
+
+int GetVal(char,int *,Stack *);
+int GetLastFunctionCall(Stack*);
+
+Stack* FreeAll(Stack *);
+
+Stack * Push(Node sNode,Stack *stck) // 노드 스택에 새로운 노드 삽입
+{
+	Node *newnode;
+
+	if ((newnode=(Node*)malloc(sizeof(Node)))==NULL) { // 메모리 할당이 불가능한 경우
+		printf("ERROR, Couldn't allocate memory..."); // 에러 메시지 출력
+		return NULL; // 함수 종료
+	}
+	else // 메모리 할당이 가능한 경우
+	{ // 삽입할 노드 변수에 해당하는 값 입력
+		newnode->type=sNode.type;
+		newnode->val=sNode.val;
+		newnode->exp_data=sNode.exp_data;
+		newnode->line=sNode.line;
+		newnode->next=stck->top;
+		stck->top=newnode; // 스택의 최상위 노드를 새로 삽입한 노드로 변경
+		return stck;
+	}
+}
+
+OpStack * PushOp(char op,OpStack *opstck) // 연산자 스택에 새로운 연산자 삽입
+{
+	opNode *newnode;
+	if ((newnode=(opNode*)malloc(sizeof(opNode)))==NULL) { // 메모리 할당이 불가능한 경우
+		printf("ERROR, Couldn't allocate memory..."); // 에러 메시지 출력
+		return NULL; // 함수 종료
+	}
+	else // 메모리 할당이 가능한 경우
+	{ // 삽입할 연산 변수에 해당하는 값 입력
+		newnode->op=op;
+		newnode->next=opstck->top;
+		opstck->top=newnode; // 연산자 스택의 최상위 노드를 새로 삽입한 노드로 변경
+		return opstck;
+	}
+}
+
+char PopOp(OpStack *opstck) // 연산자 스택에서 연산자 뽑아내기
+{
+	opNode *temp;
+	char op;
+	if (opstck->top == NULL )
+	{
+		printf("ERROR, empty stack...");
+	}
+	else
+	{
+		op=opstck->top->op;
+		temp=opstck->top;
+		opstck->top=opstck->top->next;
+		free(temp);
+		return op;
+	}
+	return NULL;
+}
+
+PostfixStack * PushPostfix(int val,PostfixStack *poststck) // 후위 표기법 스택에 새로운 후위 표기법 노드 삽입
+{
+	Postfixnode *newnode;
+	if ((newnode=(Postfixnode*)malloc(sizeof(Postfixnode)))==NULL) {
+		printf("ERROR, Couldn't allocate memory...");
+	return NULL;
+	}
+	else
+	{
+		newnode->val=val;
+		newnode->next=poststck->top;
+		poststck->top=newnode;
+		return poststck;
+	}
+}
+
+char PopPostfix(PostfixStack *poststck) // 후위 표기법 스택에서 후위 표기법 노드 뽑아내기
+{
+	Postfixnode *temp;
+	int val;
+	if (poststck->top == NULL )
+	{
+		printf("ERROR, empty stack...");
+	}
+	else
+	{
+		val=poststck->top->val;
+		temp=poststck->top;
+		poststck->top=poststck->top->next;
+		free(temp);
+		return val;
+	}
+	return NULL;
+}
+
+void Pop(Node * sNode,Stack *stck) // 노드 스택에서 노드 뽑아내기
+{
+	Node *temp;
+
+	if (stck->top == NULL )
+	{
+		printf("ERROR, empty stack...");
+	}
+	else
+	{
+		sNode->exp_data=stck->top->exp_data;
+		sNode->type=stck->top->type;
+		sNode->line=stck->top->line;
+		sNode->val=stck->top->val;
+		temp=stck->top;
+		stck->top=stck->top->next;
+		free(temp);
+	}
+}
+
+int isStackEmpty(OpStack *stck) // 연산자 스택이 비었는지 확인
+{
+	if (stck->top==0)
+		return 1;
+return 0;
+}
+
+/*void printAllStack(Stack * stck)
+{
+	Node tempNode;
+	printf("\n------------------\n");
+	printf("dumping the stack...\n");
+	Pop(&tempNode,stck);
+	printf("exp=%c type=%d val=%d 	line=%d\n",tempNode.exp_data,tempNode.type,tempNode.val,tempNode.line);
+	while( (stck->top!=NULL) ) {
+		Pop(&tempNode,stck);
+		printf("exp=%c type=%d val=%d 				line=%d\n",tempNode.exp_data,tempNode.type,tempNode.val,tempNode.line);
+	}
+} */
+
+int Priotry(char operator) // 연산자 특성에 대한 우선순위 출력
+{
+	if ((operator=='+') | (operator=='-'))
+		return 1;
+	else if ((operator=='/') | (operator=='*'))
+		return 2;
+return 0;
+}
+
+int main(int argc,char ** argv) // 메인함수
+{
+	// char형 변수 선언, 초기화
+	char line[4096];
+	char dummy[4096];
+	char lineyedek[4096];
+	char postfix[4096];
+	char * firstword;
+
+	// int형 변수 선언, 초기화
+	int val1;
+	int val2;
+
+	int LastExpReturn; // 마지막으로 계산된 표현식의 결과
+	int LastFunctionReturn=-999; // 마지막으로 호출된 함수의 반환값
+	int CalingFunctionArgVal; // 함수 호출 시 전달된 인수의 값
+
+	Node tempNode; // 현재 노드
+
+	OpStack * MathStack; // 연산자 스택
+
+	FILE *filePtr;
+
+	PostfixStack * CalcStack;
+
+	int resultVal;
+
+	Stack * STACK;
+
+	int curLine=0;
+	int foundMain=0;
+        int WillBreak=0;
+
+	MathStack->top=NULL; // 연산자 스택 초기화
+	CalcStack->top=NULL; // 후위 표기법 스택 초기화
+	STACK->top=NULL; // 노드 스택 초기화
+	clrscr(); // 화면 지움
+
+	if (argc!=2) // 프로그램 이름만 실행하는 경우
+	{
+		/* if argument count is =1 */
+		printf("Incorrect arguments!\n"); // 오류 메시지와 현재 프로그램의 메모리 사용량 출력
+		printf("Usage: %s <inputfile.spl>",argv[0]); // argv[0]: 프로그램 이름
+		return 1;
+	}
+	/* open the file */
+	if ( ( filePtr=fopen(argv[1],"r") ) == NULL ) // read mode실행 시 파일이 존재하지 않을 경우
+	{
+		printf("Can't open %s. Check the file please",argv[1]); // argv[1]: 프로그램에 전달된 추가 인자
+		return 2;
+	}
+
+	while (!feof(filePtr)) // 파일의 끝에 도달할 때까지 반복
+	{
+		int k=0;
+
+		fgets(line,4096,filePtr); /* read the file by Line by Line */ // 파일의 각 줄을 line에 저장
+		/* scan for /t characters. get rid of them! */
+		while(line[k]!='\0') // 현재 라인에서 '\t' 문자열 제거
+		{
+		 if (line[k]=='\t')
+		 {
+			line[k]=' ';
+		 }
+		 k++;
+		}
+
+		strcpy(lineyedek,line); // line 문자열을 lineyedek에 복사
+
+		curLine++;
+		tempNode.val=-999; // 노드 스택에 삽입될 노드 초기화(기본값으로 설정)
+		tempNode.exp_data=' ';
+		tempNode.line=-999;
+		tempNode.type=-999;
+
+		// 현재 라인 순회
+		if (!strcmpi("begin\n",line) | !strcmpi("begin",line)) // 파일에서 begin을 찾아 노드 스택에 삽입
+		{
+			if (foundMain)
+			{
+				tempNode.type=4; // tempNode의 type을 begin으로 설정
+				STACK=Push(tempNode,STACK);
+			}
+		}
+
+		else if (!strcmpi("end\n",line) | !strcmpi("end",line) ) // 파일에서 end를 찾아 노드 스택에 삽입
+		{
+			if (foundMain)
+			{
+				int sline;
+
+
+				tempNode.type=5; // tempNode의 type을 end로 설정
+				STACK=Push(tempNode,STACK);
+
+				sline=GetLastFunctionCall(STACK); // function call이 불린 라인 탐색
+				if (sline==0) // function call이 없는 경우
+				{
+					/* WE FOUND THE RESULT! */
+					printf("Output=%d",LastExpReturn);
+
+				}
+				else // function call이 있는 경우
+				{
+					int j;
+					int foundCall=0;
+					LastFunctionReturn=LastExpReturn;
+					/* get to the last line that have been a function calling */
+
+						fclose(filePtr);
+							filePtr=fopen(argv[1],"r");
+							curLine=0;
+							/* file reversed to start postion */
+							/* now go codeline lines to go, to the functions line */
+							for(j=1;j<sline;j++)
+							{
+								fgets(dummy,4096,filePtr); /* read the file by Line by Line */
+								curLine++;
+							}
+
+
+						/* clear all the stack up to the last function call */
+						while(foundCall==0)
+						{
+							Pop(&tempNode,STACK);
+							if (tempNode.type==3)
+							{
+								foundCall=1;
+							}
+						}
+
+				}
+
+
+			}
+		}
+
+		else // 파일에서 begin, end가 아닌 부분 처리
+		{
+			//we need to tokinize
+			firstword=strtok(line," ");
+			
+			// 라인의 단어를 토큰화하여 순회
+			if (!strcmpi("int",firstword)) // 노드에서 int(variable)를 찾아 노드 스택에 삽입
+			{
+				if (foundMain)
+				{
+					tempNode.type=1; /*integer*/ // 노드의 type을 1(variable)로 설정
+					firstword=strtok(NULL," "); // 다음 토큰 탐색(변수명)
+					tempNode.exp_data=firstword[0]; // 노드의 exp_data를 변수명의 첫 글자로 설정
+
+					firstword=strtok(NULL," "); // 다음 토큰 탐색
+
+					/* check for = */
+					if (!strcmpi("=",firstword)) // 다음 토큰이 '='일 경우
+					{
+						firstword=strtok(NULL," "); // 다음 토큰 탐색(변수의 값)
+					}
+
+					tempNode.val=atoi(firstword); // 노드의 val을 변수의 값으로 설정(정수화)
+					tempNode.line=0;
+					STACK=Push(tempNode,STACK); // 노드를 노드 스택에 삽입
+				}
+			}
+
+			else if (!strcmpi("function",firstword)) // 파일에서 function을 찾아 노드 스택에 삽입
+			{
+				tempNode.type=2; // 노드의 type을 2(function)로 설정
+				firstword=strtok(NULL," "); // 다음 토큰 탐색(함수명)
+				tempNode.exp_data=firstword[0]; // 노드의 exp_data를 함수명의 첫 글자로 설정
+				tempNode.line=curLine; // 노드의 line을 현재 라인으로 설정
+				tempNode.val=0;
+				STACK=Push(tempNode,STACK); // 노드를 노드 스택에 삽입
+
+				if ( (firstword[0]=='m') & (firstword[1]=='a') & (firstword[2]=='i') & (firstword[3]=='n') ) // 파일에서 main function을 찾은 경우
+				{
+					/*printf("Found function main() in line %d. Starting to running the script...\n",curLine);*/
+					foundMain=1; // flag로서 동작
+				}
+				else // main이 아닌 function일 경우
+				{
+					if (foundMain)
+					{
+						firstword=strtok(NULL," "); // 다음 토큰 탐색(함수의 매개변수)
+						tempNode.type=1; // 노드의 type을 1(variable)로 설정
+						tempNode.exp_data=firstword[0]; // 노드의 exp_data를 함수의 매개변수의 첫 글자로 설정
+						tempNode.val=CalingFunctionArgVal;
+						tempNode.line=0;
+						STACK=Push(tempNode,STACK); // 노드를 노드 스택에 삽입
+					}
+				}
+			}
+
+			else if (firstword[0]=='(') // 파일에서 '('를 찾은 경우
+			{
+
+			if (foundMain)
+				{
+
+				int i=0;
+				int y=0;
+
+
+				MathStack->top=NULL; // 연산자 스택의 최상위 노드가 NULL값을 가리키도록 변경
+				/* now make the postfix calculcation */
+
+
+
+
+
+				while(lineyedek[i]!='\x0') // 현재 라인의 문자 순회
+				{
+					/* evulate the function */
+					if (isdigit(lineyedek[i])) { // 숫자인 경우
+						postfix[y]=lineyedek[i]; // postfix 배열에 삽입
+						y++;
+					}
+				     /*	else if (lineyedek[i]=='(')
+					{
+						MathStack=PushOp(lineyedek[i],MathStack); // "("를 연산자 스택에 삽입
+					}*/
+
+					else if (lineyedek[i]==')') // ')'인 경우
+					{
+						if (!isStackEmpty(MathStack)) // 연산자 스택이 비어있지 않을 때
+						{
+							postfix[y]=PopOp(MathStack); // postfix 배열에 연산자 스택에서 뽑아낸 것을 삽입
+							y++;
+						}
+					}
+
+					else if ((lineyedek[i]=='+') | (lineyedek[i]=='-') | (lineyedek[i]=='*') | (lineyedek[i]=='/')) // 연산자인 경우
+					{
+						/*operators*/
+						if (isStackEmpty(MathStack)) // 연산자 스택이 비어있는 경우
+						{
+					/* if stack empty push the operator to stack */
+
+							MathStack=PushOp(lineyedek[i],MathStack); // 연산자 스택에 연산자 삽입
+						}
+						else // 연산자 스택이 비어있지 않는 경우
+						{
+							/* check for presedence */ // 연산자 우선순위 확인
+							if (Priotry(lineyedek[i]) <= Priotry(MathStack->top->op) ) // 우선순위가 작거나 같은 경우
+							{
+								/* higher presedence for example + < *  */
+								/* pop the last operator */
+
+								/* add the poped operator to the postfix */
+								postfix[y]=PopOp(MathStack); // postfix에 연산자 스택에서 뽑아낸 것을 삽입
+								y++;
+
+
+								MathStack=PushOp(lineyedek[i],MathStack); // 현재 연산자를 연산자 스택에 삽입
+
+
+							}
+							else // 우선순위가 높은 경우
+							{
+								/* lower presedence for example / > + */
+								/* push to stack */
+
+								MathStack=PushOp(lineyedek[i],MathStack); // 현재 연산자를 연산자 스택에 삽입
+							}
+
+						}
+					}
+
+					else if (isalpha(lineyedek[i])>0) // 알파벳인 경우
+					{
+						int codeline=0;
+						int dummyint=0;
+						/*look if it's a variable or function call 						*/
+						int retVal=0;
+						retVal=GetVal(lineyedek[i],&codeline,STACK); // 노드가 변수인지 함수 호출인지 확인
+						if ((retVal!=-1) & (retVal!=-999)) // 노드가 변수인 경우
+						{
+							/* if variable */
+							postfix[y]=retVal+48; /* in ascii table numeric values start from 48 */
+							y++;
+
+						}
+						else // 노드가 함수 호출인 경우
+						{
+
+						    if (LastFunctionReturn==-999) // 입력한 표현식 데이터가 존재하지 않을 때(아직 등장하지 않은 함수일 때)
+						    {
+
+							/* if function */
+							/* add to our system stack that we are making a call to function */
+							int j;
+							tempNode.type=3; // 노드의 type을 function call로 설정
+							tempNode.line=curLine; // 노드의 line을 현재 줄로 설정
+							STACK=Push(tempNode,STACK); // 노드를 노드 스택에 삽입
+
+							/* get function's arguments value */
+							CalingFunctionArgVal=GetVal(lineyedek[i+2],&dummyint,STACK); // 함수의 매개변수 값 찾기
+
+
+
+							fclose(filePtr); // 파일을 다시 열어 처음부터 탐색
+							filePtr=fopen(argv[1],"r");
+							curLine=0;
+							/* file reversed to start postion */
+							/* now go codeline lines to go, to the functions line */
+
+
+							/* !!!!!!!!!!!!!!! j <= codeline olabilir */
+							for(j=1;j<codeline;j++)
+							{
+								fgets(dummy,4096,filePtr); /* read the file by Line by Line */
+								curLine++;
+							}
+
+							WillBreak=1;
+							break;
+						    }
+						    else // 입력한 표현식 데이터(함수)가 존재할 때
+
+						    {
+
+
+							postfix[y]=LastFunctionReturn+48; /* in ascii table numeric values start from 48 */
+							y++;
+							i=i+3; // 함수 호출 처리 중인 문자 이동
+							LastFunctionReturn=-999; // 함수 호출 여부를 초기화
+
+
+						    }
+						}
+					}
+					i++;
+				}
+
+				if (WillBreak==0) // 중간에 등장하지 않은 함수가 없었을 경우
+				{
+				/* get out items left in the mathstack */
+				while (isStackEmpty(MathStack)==0)
+				{
+					/* add the poped operator to the postfix */
+					postfix[y]=PopOp(MathStack); // 모든 노드 스택에서 하나씩 뽑아내어 postfix에 삽입
+					y++;
+				}
+
+				postfix[y]='\0';
+
+				//MathStack=FreeAll(MathStack);
+
+				/* now calculate the postfix */
+				/*printf("\nCURRENT POSTFIX=%s\n",postfix);*/
+
+				i=0;
+
+				CalcStack->top=NULL;
+				while(postfix[i]!='\x0') // postfix 리스트 순회
+				{
+					if (isdigit(postfix[i])) { // 숫자일 경우
+						/* push to stack */
+						CalcStack=PushPostfix(postfix[i]-'0',CalcStack); // 후위 표기법 노드에 숫자 삽입
+					}
+					else if ((postfix[i]=='+') | (postfix[i]=='-') | (postfix[i]=='*') | (postfix[i]=='/')) // 연산자(사칙연산)일 경우
+					{
+						val1=PopPostfix(CalcStack); // 후위 표기법 노드에서 두 노드 뽑아내기
+
+						val2=PopPostfix(CalcStack);
+
+
+						switch (postfix[i]) // 연산자에 맞는 연산 수행
+						{
+							case '+': resultVal=val2+val1;break;
+							case '-': resultVal=val2-val1;break;
+							case '/': resultVal=val2/val1;break;
+							case '*': resultVal=val2*val1;break;
+						}
+
+						CalcStack=PushPostfix(resultVal,CalcStack); // 연산 결과를 후위 표기법 노드에 삽입
+					}
+					i++;
+				}
+
+				//CalcStack=FreeAll(CalcStack);
+				LastExpReturn=CalcStack->top->val; // 마지막 표현식 결과를 연산자 스택의 최상위 노드 값으로 설정
+
+				}
+				WillBreak=0;
+				}
+			}
+		}
+
+
+	}
+
+	fclose(filePtr); // 파일 닫기
+
+	//printAllStack(STACK);
+	STACK=FreeAll(STACK); // 모든 메모리 할당 해제
+
+	printf("\nPress a key to exit...");
+	getch();
+	return  0;
+} // main 함수 종료
+
+
+Stack * FreeAll(Stack * stck) // 모든 메모리 할당 해제 함수
+{
+Node * temp;
+Node * head;
+
+	if (stck->top != NULL )
+	{
+		head=stck->top;
+		do
+		{
+
+			temp=head;
+			head=head->next;
+			free(temp);
+
+		} while (head->next!=NULL);
+	}
+
+return NULL;
+}
+int GetLastFunctionCall(Stack *stck) // 가장 최근 function call 호출
+{
+Node * head;
+
+	if (stck->top == NULL )
+	{
+		printf("ERROR, empty stack...");
+	}
+	else
+	{
+		head=stck->top;
+		do
+		{
+			if ( head->type==3 ) // function call인 경우
+			{
+				return head->line;
+			}
+			else
+			{
+				head=head->next;
+			}
+		} while (head->next!=NULL);
+	}
+
+	return 0;
+
+
+
+}
+
+int GetVal(char exp_name,int * line,Stack *stck) // 입력한 표현식 데이터 노드 탐색
+{
+
+Node * head;
+*line=0;
+	if (stck->top == NULL ) // 노드 스택이 빈 경우
+	{
+		printf("ERROR, empty stack...");
+	}
+	else // 노드 스택이 비지 않은 경우
+	{
+		head=stck->top;
+		do
+		{
+			if ( head->exp_data==exp_name ) // 입력한 표현식 데이터를 가지는 노드가 나올 때까지 탐색
+			{
+
+				if (head->type==1) // 해당 노드의 type이 variable일 때
+				{
+					/* return the variables value */
+					return head->val; // 노드의 val 값 리턴
+				}
+				else if (head->type==2) // 해당 노드의 type이 function일 때
+				{
+					*line=head->line; // 해당 노드가 참조하는 라인을 line에 저장
+					return -1;
+					/* it's a function so return -1 */
+				}
+
+			}
+			else
+			{
+				head=head->next;
+			}
+		} while (head->next!=NULL);
+		/* check agin once more */
+		if (head->exp_data==exp_name)
+		{
+
+				if (head->type==1)
+				{
+					/* return the variables value */
+					return head->val;
+				}
+				else if (head->type==2)
+				{
+					*line=head->line;
+					return -1;
+					/* it's a function so return -1 */
+				}
+
+
+		}
+	}
+
+	return -999;
+}
+
